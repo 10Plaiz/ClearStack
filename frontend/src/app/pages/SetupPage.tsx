@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import { useSetup } from "../context/SetupContext";
 import { analyzeRepo } from "../utils/generateSetup";
+import { parseGitHubRepoUrl } from "../utils/githubApi";
 
-// ── Types ─────────────────────────────────────────────────────────────────
-type StepType = "single" | "multi" | "text" | "review";
+type StepType = "single" | "multi";
 
 interface StepOption {
   label: string;
@@ -18,17 +18,14 @@ interface Step {
   subtitle: string;
   type: StepType;
   field: string;
-  options?: StepOption[];
-  optional?: boolean;
-  condition?: (data: Record<string, unknown>) => boolean;
+  options: StepOption[];
 }
 
-// ── Steps definition ───────────────────────────────────────────────────────
 const ALL_STEPS: Step[] = [
   {
     id: "start_type",
     title: "How would you like to begin?",
-    subtitle: "Choose your starting point — we'll tailor the setup to your situation.",
+    subtitle: "Choose your starting point so the setup stays aligned with your current state.",
     type: "single",
     field: "startType",
     options: [
@@ -57,7 +54,7 @@ const ALL_STEPS: Step[] = [
   {
     id: "stage",
     title: "What stage are you in?",
-    subtitle: "Your stage determines which setup files and guardrails are most relevant right now.",
+    subtitle: "Your stage determines which setup files and guardrails are relevant right now.",
     type: "single",
     field: "stage",
     options: [
@@ -74,7 +71,7 @@ const ALL_STEPS: Step[] = [
   {
     id: "experience",
     title: "What is your experience level?",
-    subtitle: "This helps us calibrate the complexity of your setup recommendations.",
+    subtitle: "This calibrates the complexity of the setup recommendations.",
     type: "single",
     field: "experience",
     options: [
@@ -104,7 +101,7 @@ const ALL_STEPS: Step[] = [
   {
     id: "ai_tools",
     title: "What AI tools are you using?",
-    subtitle: "We'll generate tool-specific instruction snippets where applicable.",
+    subtitle: "We will generate tool-specific instruction snippets where applicable.",
     type: "multi",
     field: "aiTools",
     options: [
@@ -137,7 +134,7 @@ const ALL_STEPS: Step[] = [
   {
     id: "ai_avoid",
     title: "What should the AI avoid?",
-    subtitle: "These become guardrails in your AI workflow file to prevent common AI pitfalls.",
+    subtitle: "These become guardrails in your AI workflow file.",
     type: "multi",
     field: "aiAvoid",
     options: [
@@ -173,76 +170,61 @@ const ALL_STEPS: Step[] = [
     options: [
       { label: "Yes, I need a decision log", value: "Yes", description: "Track why important choices were made" },
       { label: "No decision log needed", value: "No", description: "Skip this for now" },
-      { label: "Not sure yet", value: "Not sure", description: "We'll include a lightweight template just in case" },
+      { label: "Not sure yet", value: "Not sure", description: "Include a lightweight template just in case" },
     ],
   },
   {
     id: "handoff",
     title: "Do you need a progress handoff document?",
-    subtitle: "Useful for team projects or when resuming after a break. Helps AI tools understand where you left off.",
+    subtitle: "Useful for team projects or multi-session work.",
     type: "single",
     field: "progressHandoff",
     options: [
       { label: "Yes, include a handoff template", value: "Yes", description: "For team work or multi-session projects" },
       { label: "No handoff needed", value: "No", description: "Solo short-term project" },
-      { label: "Not sure", value: "Not sure", description: "We'll include a minimal template" },
+      { label: "Not sure", value: "Not sure", description: "Include a minimal template" },
     ],
-  },
-  {
-    id: "repo_url",
-    title: "Share your repository URL",
-    subtitle: "Optional. We'll do a lightweight review of your public repository structure and factor findings into your setup.",
-    type: "text",
-    field: "repoUrl",
-    optional: true,
-    condition: (data) => data.startType === "existing",
   },
 ];
 
-// ── Component ─────────────────────────────────────────────────────────────
+function isAnalysisCurrent(currentUrl: string, analyzedUrl: string | undefined): boolean {
+  const parsedCurrent = parseGitHubRepoUrl(currentUrl);
+  const parsedAnalyzed = analyzedUrl ? parseGitHubRepoUrl(analyzedUrl) : null;
+
+  if (!parsedCurrent || !parsedAnalyzed) {
+    return false;
+  }
+
+  return parsedCurrent.normalizedUrl.toLowerCase() === parsedAnalyzed.normalizedUrl.toLowerCase();
+}
+
 export function SetupPage() {
   const { data, updateData } = useSetup();
   const navigate = useNavigate();
+
   const [stepIndex, setStepIndex] = useState(0);
-  const [localText, setLocalText] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatingStep, setGeneratingStep] = useState(0);
-  const [isAnalyzingRepo, setIsAnalyzingRepo] = useState(false);
-
-  const visibleSteps = ALL_STEPS.filter(
-    (s) => !s.condition || s.condition(data as unknown as Record<string, unknown>)
+  const [repoDraft, setRepoDraft] = useState(data.repoUrl);
+  const [repoError, setRepoError] = useState<string | null>(null);
+  const [repoStatus, setRepoStatus] = useState<string | null>(
+    data.repoAnalysis ? `Reviewed ${data.repoAnalysis.fullName}` : null
   );
+  const [isReviewingRepo, setIsReviewingRepo] = useState(false);
+  const [isAnalyzingRepo, setIsAnalyzingRepo] = useState(false);
+  const [repoProgressStep, setRepoProgressStep] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgressStep, setGenerationProgressStep] = useState(0);
 
+  const visibleSteps = useMemo(() => ALL_STEPS, []);
   const currentStep = visibleSteps[stepIndex];
-  const progress = ((stepIndex) / visibleSteps.length) * 100;
+  const progress = ((stepIndex + 1) / visibleSteps.length) * 100;
   const isLastStep = stepIndex === visibleSteps.length - 1;
-
-  const getFieldValue = (field: string): string | string[] => {
-    return (data as Record<string, unknown>)[field] as string | string[];
-  };
-
-  const isStepValid = (): boolean => {
-    if (!currentStep) return false;
-    if (currentStep.optional) return true;
-    const val = getFieldValue(currentStep.field);
-    if (currentStep.type === "single") return typeof val === "string" && val.length > 0;
-    if (currentStep.type === "multi") return Array.isArray(val) && val.length > 0;
-    if (currentStep.type === "text") return true; // optional text
-    return true;
-  };
-
-  const handleSingleSelect = (value: string) => {
-    updateData({ [currentStep.field]: value } as Parameters<typeof updateData>[0]);
-  };
-
-  const handleMultiToggle = (value: string) => {
-    const current = (getFieldValue(currentStep.field) as string[]) || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    updateData({ [currentStep.field]: updated } as Parameters<typeof updateData>[0]);
-  };
-
+  const repoReviewMessages = [
+    "Validating the repository URL...",
+    "Fetching repository metadata...",
+    "Scanning the default branch tree...",
+    "Matching setup and documentation files...",
+    "Saving repository signals for the setup flow...",
+  ];
   const generatingMessages = [
     "Analyzing your project context...",
     "Generating AI workflow rules...",
@@ -251,62 +233,155 @@ export function SetupPage() {
     "Packaging your setup files...",
   ];
 
-  const handleNext = async () => {
-    if (currentStep.type === "text") {
-      updateData({ repoUrl: localText } as Parameters<typeof updateData>[0]);
+  const repoAnalysisIsCurrent = isAnalysisCurrent(repoDraft, data.repoAnalysis?.repoUrl);
+
+  useEffect(() => {
+    if (!isAnalyzingRepo) {
+      return;
     }
 
-    if (isLastStep) {
-      // Analyze repo if provided
-      if (data.startType === "existing" && localText.trim()) {
-        setIsAnalyzingRepo(true);
-        try {
-          const analysis = await analyzeRepo(localText.trim());
-          updateData({ repoAnalysis: analysis });
-        } catch {
-          // silently skip
-        }
+    setRepoProgressStep(0);
+    const timer = window.setInterval(() => {
+      setRepoProgressStep((previous) => Math.min(previous + 1, repoReviewMessages.length - 1));
+    }, 650);
+
+    return () => window.clearInterval(timer);
+  }, [isAnalyzingRepo, repoReviewMessages.length]);
+
+  useEffect(() => {
+    if (!data.repoAnalysis) {
+      return;
+    }
+
+    if (repoAnalysisIsCurrent) {
+      setRepoStatus(`Reviewed ${data.repoAnalysis.fullName}`);
+      setRepoError(null);
+    }
+  }, [data.repoAnalysis, repoAnalysisIsCurrent]);
+
+  const getFieldValue = (field: string): string | string[] => {
+    return (data as Record<string, unknown>)[field] as string | string[];
+  };
+
+  const isStepValid = (): boolean => {
+    const value = getFieldValue(currentStep.field);
+
+    if (currentStep.type === "single") {
+      return typeof value === "string" && value.length > 0;
+    }
+
+    return Array.isArray(value) && value.length > 0;
+  };
+
+  const handleSingleSelect = (value: string) => {
+    updateData({ [currentStep.field]: value } as Parameters<typeof updateData>[0]);
+  };
+
+  const handleMultiToggle = (value: string) => {
+    const current = (getFieldValue(currentStep.field) as string[]) || [];
+    const updated = current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
+    updateData({ [currentStep.field]: updated } as Parameters<typeof updateData>[0]);
+  };
+
+  const clearRepository = () => {
+    setRepoDraft("");
+    setRepoError(null);
+    setRepoStatus(null);
+    updateData({ repoUrl: "", repoAnalysis: null });
+  };
+
+  const reviewRepository = async (fullscreen = false) => {
+    const trimmedUrl = repoDraft.trim();
+
+    updateData({ repoUrl: trimmedUrl });
+
+    if (!trimmedUrl) {
+      if (!fullscreen) {
+        clearRepository();
+      }
+      return null;
+    }
+
+    if (!parseGitHubRepoUrl(trimmedUrl)) {
+      const message = "Enter a full GitHub repository URL, for example https://github.com/owner/repo.";
+      setRepoError(message);
+      setRepoStatus(null);
+      if (fullscreen) {
+        throw new Error(message);
+      }
+      return null;
+    }
+
+    setRepoError(null);
+    setRepoStatus(null);
+    setIsReviewingRepo(true);
+    if (fullscreen) {
+      setIsAnalyzingRepo(true);
+    }
+
+    try {
+      const analysis = await analyzeRepo(trimmedUrl);
+      setRepoDraft(analysis.repoUrl);
+      setRepoStatus(`Reviewed ${analysis.fullName}`);
+      updateData({ repoUrl: analysis.repoUrl, repoAnalysis: analysis });
+      return analysis;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Repository review failed.";
+      setRepoError(message);
+      updateData({ repoAnalysis: null });
+      if (fullscreen) {
+        throw error;
+      }
+      return null;
+    } finally {
+      setIsReviewingRepo(false);
+      if (fullscreen) {
         setIsAnalyzingRepo(false);
       }
-
-      // Generate setup
-      setIsGenerating(true);
-      for (let i = 0; i < generatingMessages.length; i++) {
-        setGeneratingStep(i);
-        await new Promise((r) => setTimeout(r, 700));
-      }
-      updateData({ isGenerated: true });
-      navigate("/dashboard");
-    } else {
-      setStepIndex((i) => i + 1);
     }
+  };
+
+  const handleNext = async () => {
+    if (!isLastStep) {
+      setStepIndex((previous) => previous + 1);
+      return;
+    }
+
+    if (repoDraft.trim() && !repoAnalysisIsCurrent) {
+      try {
+        await reviewRepository(true);
+      } catch {
+        return;
+      }
+    }
+
+    setIsGenerating(true);
+
+    for (let index = 0; index < generatingMessages.length; index += 1) {
+      setGenerationProgressStep(index);
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+    }
+
+    updateData({ isGenerated: true });
+    navigate("/dashboard");
   };
 
   const handleBack = () => {
-    if (stepIndex > 0) setStepIndex((i) => i - 1);
-    else navigate("/");
-  };
-
-  // Sync text field
-  useEffect(() => {
-    if (currentStep?.type === "text") {
-      setLocalText((getFieldValue(currentStep.field) as string) || "");
+    if (stepIndex > 0) {
+      setStepIndex((previous) => previous - 1);
+      return;
     }
-  }, [stepIndex]);
+
+    navigate("/");
+  };
 
   if (isAnalyzingRepo) {
     return (
       <GeneratingScreen
-        messages={[
-          "Fetching repository structure...",
-          "Checking for README...",
-          "Looking for documentation files...",
-          "Checking for AI instruction files...",
-          "Finalizing repository review...",
-        ]}
-        currentStep={generatingStep}
+        messages={repoReviewMessages}
+        currentStep={repoProgressStep}
         title="Reviewing your repository"
-        subtitle="Performing a lightweight public structure review"
+        subtitle="Running a shallow public GitHub review before generating the setup package"
       />
     );
   }
@@ -315,16 +390,15 @@ export function SetupPage() {
     return (
       <GeneratingScreen
         messages={generatingMessages}
-        currentStep={generatingStep}
+        currentStep={generationProgressStep}
         title="Generating your setup package"
-        subtitle="Building files tailored to your project and stage"
+        subtitle="Building files tailored to your project, stage, and repository signals"
       />
     );
   }
 
   return (
     <div className="min-h-screen bg-white flex flex-col" style={{ fontFamily: "Inter, Arial, sans-serif" }}>
-      {/* ── Minimal nav ── */}
       <header className="border-b border-[#e5e7eb] px-6 h-16 flex items-center justify-between">
         <Link
           to="/"
@@ -339,7 +413,7 @@ export function SetupPage() {
               <rect x="8" y="8" width="5" height="5" rx="1" fill="white" />
             </svg>
           </div>
-          <span className="text-[#17171c]" style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.3px" }}>
+          <span className="text-[#17171c]" style={{ fontSize: "16px", fontWeight: 600 }}>
             ClearStack
           </span>
         </Link>
@@ -348,18 +422,14 @@ export function SetupPage() {
         </span>
       </header>
 
-      {/* ── Progress ── */}
       <div className="w-full h-1 bg-[#f2f2f2]">
-        <div
-          className="h-1 bg-[#17171c] transition-all duration-500"
-          style={{ width: `${progress}%` }}
-        />
+        <div className="h-1 bg-[#17171c] transition-all duration-500" style={{ width: `${progress}%` }} />
       </div>
 
-      {/* ── Content ── */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-        <div className="w-full max-w-xl">
-          {/* Step label */}
+        <div className="w-full max-w-2xl">
+
+
           <div className="flex items-center gap-2 mb-6">
             <span
               className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#17171c] text-white"
@@ -372,72 +442,66 @@ export function SetupPage() {
             </span>
           </div>
 
-          {/* Question */}
           <h1
             className="text-[#17171c] mb-2"
             style={{
               fontFamily: "'Space Grotesk', Inter, sans-serif",
               fontSize: "clamp(22px, 3vw, 30px)",
               fontWeight: 600,
-              letterSpacing: "-0.5px",
               lineHeight: 1.2,
             }}
           >
-            {currentStep?.title}
+            {currentStep.title}
           </h1>
           <p className="text-[#75758a] mb-8" style={{ fontSize: "15px", lineHeight: 1.5 }}>
-            {currentStep?.subtitle}
+            {currentStep.subtitle}
           </p>
 
-          {/* Options */}
-          {(currentStep?.type === "single" || currentStep?.type === "multi") && (
-            <div className="flex flex-wrap gap-3 mb-8">
-              {currentStep.options?.map((opt) => {
-                const fieldVal = getFieldValue(currentStep.field);
-                const isSelected =
-                  currentStep.type === "single"
-                    ? fieldVal === opt.value
-                    : Array.isArray(fieldVal) && fieldVal.includes(opt.value);
+          <div className="flex flex-wrap gap-3 mb-8">
+            {currentStep.options.map((option) => {
+              const fieldValue = getFieldValue(currentStep.field);
+              const isSelected =
+                currentStep.type === "single"
+                  ? fieldValue === option.value
+                  : Array.isArray(fieldValue) && fieldValue.includes(option.value);
 
-                return (
+              return (
+                <div key={option.value} style={{ width: option.description ? "100%" : "auto" }}>
                   <button
-                    key={opt.value}
                     onClick={() =>
-                      currentStep.type === "single"
-                        ? handleSingleSelect(opt.value)
-                        : handleMultiToggle(opt.value)
+                      currentStep.type === "single" ? handleSingleSelect(option.value) : handleMultiToggle(option.value)
                     }
-                    className="transition-all duration-150 cursor-pointer text-left"
+                    className="cursor-pointer text-left transition-all duration-150 w-full"
                     style={{
-                      padding: opt.description ? "12px 16px" : "10px 18px",
-                      borderRadius: opt.description ? "12px" : "9999px",
+                      padding: option.description ? "12px 16px" : "10px 18px",
+                      borderRadius: option.description ? "12px" : "9999px",
                       border: isSelected ? "1.5px solid #17171c" : "1.5px solid #e5e7eb",
-                      background: isSelected ? "#17171c" : "white",
-                      color: isSelected ? "white" : "#212121",
+                      background: isSelected ? "#17171c" : "#ffffff",
+                      color: isSelected ? "#ffffff" : "#212121",
                       fontSize: "14px",
                       fontWeight: isSelected ? 500 : 400,
-                      width: opt.description ? "100%" : "auto",
                     }}
                   >
                     <div className="flex items-start gap-2">
-                      {opt.description && (
+                      {option.description ? (
                         <div
-                          className="w-4 h-4 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center"
+                          className="w-4 h-4 rounded-full border-2 mt-0.5 flex items-center justify-center flex-shrink-0"
                           style={{
                             borderColor: isSelected ? "#ff7759" : "#d9d9dd",
                             background: isSelected ? "#ff7759" : "transparent",
                           }}
                         >
-                          {isSelected && (
+                          {isSelected ? (
                             <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
                               <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
                             </svg>
-                          )}
+                          ) : null}
                         </div>
-                      )}
+                      ) : null}
+
                       <div>
-                        <span style={{ fontWeight: opt.description ? 500 : 400 }}>{opt.label}</span>
-                        {opt.description && (
+                        <span style={{ fontWeight: option.description ? 500 : 400 }}>{option.label}</span>
+                        {option.description ? (
                           <p
                             className="m-0 mt-0.5"
                             style={{
@@ -446,59 +510,186 @@ export function SetupPage() {
                               lineHeight: 1.4,
                             }}
                           >
-                            {opt.description}
+                            {option.description}
                           </p>
-                        )}
+                        ) : null}
                       </div>
-                      {currentStep.type === "multi" && !opt.description && isSelected && (
+
+                      {currentStep.type === "multi" && !option.description && isSelected ? (
                         <span className="ml-1">✓</span>
-                      )}
+                      ) : null}
                     </div>
                   </button>
-                );
-              })}
-            </div>
-          )}
 
-          {/* Text input */}
-          {currentStep?.type === "text" && (
-            <div className="mb-8">
-              <input
-                type="url"
-                value={localText}
-                onChange={(e) => setLocalText(e.target.value)}
-                placeholder="https://github.com/username/repository"
-                className="w-full border border-[#e5e7eb] rounded-lg px-4 py-3 outline-none focus:border-[#17171c] transition-colors text-[#212121] placeholder-[#93939f]"
-                style={{ fontSize: "15px" }}
-              />
-              <p className="text-[#93939f] mt-2" style={{ fontSize: "13px" }}>
-                Only public repositories. We inspect folder structure and file presence only — no code is read.
-              </p>
-            </div>
-          )}
+                  {currentStep.id === "start_type" && option.value === "existing" && isSelected && (
+                    <div className="mt-4 rounded-2xl border border-[#e5e7eb] bg-[#fafafa] p-4 text-left">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="m-0 text-[#17171c]" style={{ fontSize: "14px", fontWeight: 600 }}>
+                            Public GitHub repository
+                          </p>
+                          <p className="m-0 mt-1 text-[#75758a]" style={{ fontSize: "13px", lineHeight: 1.5 }}>
+                            Paste a repository link to do a shallow public review using the GitHub API.
+                          </p>
+                        </div>
+                        {data.repoAnalysis && repoAnalysisIsCurrent ? (
+                          <span
+                            className="inline-flex items-center gap-2 rounded-full border px-3 py-1"
+                            style={{
+                              fontSize: "12px",
+                              fontWeight: 500,
+                              borderColor: "#cfe9e1",
+                              background: "#ecf8f4",
+                              color: "#0f5b4b",
+                            }}
+                          >
+                            <span
+                              className="block h-2 w-2 rounded-full"
+                              style={{ background: "#0f5b4b" }}
+                            />
+                            Repo reviewed
+                          </span>
+                        ) : null}
+                      </div>
 
-          {/* Navigation */}
+                      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                        <input
+                          type="url"
+                          value={repoDraft}
+                          onChange={(event) => {
+                            setRepoDraft(event.target.value);
+                            updateData({ repoUrl: event.target.value });
+                            if (repoError) {
+                              setRepoError(null);
+                            }
+                            if (repoStatus && !isAnalysisCurrent(event.target.value, data.repoAnalysis?.repoUrl)) {
+                              setRepoStatus(null);
+                            }
+                          }}
+                          placeholder="https://github.com/owner/repository"
+                          className="w-full rounded-xl border border-[#d9d9dd] px-4 py-3 outline-none transition-colors focus:border-[#17171c] text-[#212121] placeholder-[#93939f]"
+                          style={{ fontSize: "14px" }}
+                        />
+                        <button
+                          onClick={() => {
+                            void reviewRepository(false);
+                          }}
+                          disabled={isReviewingRepo}
+                          className="rounded-xl border-none px-5 py-3 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            background: "#17171c",
+                            minWidth: "138px",
+                          }}
+                        >
+                          {isReviewingRepo ? "Reviewing..." : repoAnalysisIsCurrent ? "Refresh review" : "Review repo"}
+                        </button>
+                      </div>
+
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="m-0 text-[#93939f]" style={{ fontSize: "12px", lineHeight: 1.5 }}>
+                          Public repos only. This review validates the repository, reads metadata, scans the default branch tree, and tracks setup files.
+                        </p>
+                        {repoDraft ? (
+                          <button
+                            onClick={clearRepository}
+                            className="border-none bg-transparent p-0 text-left text-[#75758a] transition-colors hover:text-[#17171c]"
+                            style={{ fontSize: "12px", fontWeight: 500 }}
+                          >
+                            Clear repository
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {repoError ? (
+                        <p className="m-0 mt-3 text-[#c33f2f]" style={{ fontSize: "12px", lineHeight: 1.5 }}>
+                          {repoError}
+                        </p>
+                      ) : null}
+
+                      {repoStatus ? (
+                        <p className="m-0 mt-3 text-[#0f5b4b]" style={{ fontSize: "12px", lineHeight: 1.5 }}>
+                          {repoStatus}
+                        </p>
+                      ) : null}
+
+                      {data.repoAnalysis && repoAnalysisIsCurrent ? (
+                        <div className="mt-4 rounded-xl border border-[#e5e7eb] bg-white p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <a
+                                href={data.repoAnalysis.repoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[#17171c] no-underline"
+                                style={{ fontSize: "14px", fontWeight: 600 }}
+                              >
+                                {data.repoAnalysis.fullName}
+                              </a>
+                              <p className="m-0 mt-1 text-[#75758a]" style={{ fontSize: "12px" }}>
+                                Default branch: {data.repoAnalysis.defaultBranch} · Tree scan: {data.repoAnalysis.treeScanStatus}
+                              </p>
+                            </div>
+                            <span className="text-[#93939f]" style={{ fontSize: "12px" }}>
+                              {data.repoAnalysis.matchedFiles.length} matched setup files
+                            </span>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <RepoSignal label="README" present={data.repoAnalysis.hasReadme} />
+                            <RepoSignal label="Docs" present={data.repoAnalysis.hasDocs} />
+                            <RepoSignal label="AI instructions" present={data.repoAnalysis.hasAIInstructions} />
+                            <RepoSignal label="Decision log" present={data.repoAnalysis.hasDecisionLog} />
+                            <RepoSignal label="Tests" present={data.repoAnalysis.hasTestSetup} />
+                          </div>
+
+                          {data.repoAnalysis.warnings.length > 0 ? (
+                            <div className="mt-4 rounded-xl bg-[#fff6f3] px-3 py-3">
+                              <p className="m-0 text-[#17171c]" style={{ fontSize: "12px", fontWeight: 600 }}>
+                                Review warnings
+                              </p>
+                              <div className="mt-2 space-y-1">
+                                {data.repoAnalysis.warnings.slice(0, 3).map((warning) => (
+                                  <p key={warning} className="m-0 text-[#8b4a37]" style={{ fontSize: "12px", lineHeight: 1.5 }}>
+                                    {warning}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
           <div className="flex items-center justify-between">
             <button
               onClick={handleBack}
               className="text-[#75758a] bg-transparent border-none cursor-pointer hover:text-[#17171c] transition-colors"
               style={{ fontSize: "14px", padding: "10px 0" }}
             >
-              ← Back
+              Back
             </button>
             <button
-              onClick={handleNext}
+              onClick={() => {
+                void handleNext();
+              }}
               disabled={!isStepValid()}
               className="text-white border-none cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
-                background: isStepValid() ? "#17171c" : "#17171c",
+                background: "#17171c",
                 fontSize: "14px",
                 fontWeight: 500,
                 padding: "12px 28px",
                 borderRadius: "9999px",
               }}
             >
-              {isLastStep ? "Generate my setup →" : currentStep?.optional ? "Skip →" : "Continue →"}
+              {isLastStep ? "Generate my setup" : "Continue"}
             </button>
           </div>
         </div>
@@ -507,7 +698,22 @@ export function SetupPage() {
   );
 }
 
-// ── Generating screen ──────────────────────────────────────────────────────
+function RepoSignal({ label, present }: { label: string; present: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1"
+      style={{
+        fontSize: "11px",
+        border: `1px solid ${present ? "rgba(10,120,98,0.16)" : "rgba(195,63,47,0.16)"}`,
+        background: present ? "#edf8f5" : "#fff3f1",
+        color: present ? "#0f5b4b" : "#a23b2e",
+      }}
+    >
+      {present ? "Yes" : "No"} {label}
+    </span>
+  );
+}
+
 function GeneratingScreen({
   messages,
   currentStep,
@@ -520,16 +726,9 @@ function GeneratingScreen({
   subtitle: string;
 }) {
   return (
-    <div
-      className="min-h-screen bg-[#17171c] flex flex-col items-center justify-center px-6"
-      style={{ fontFamily: "Inter, Arial, sans-serif" }}
-    >
-      {/* Animated logo */}
+    <div className="min-h-screen bg-[#17171c] flex flex-col items-center justify-center px-6" style={{ fontFamily: "Inter, Arial, sans-serif" }}>
       <div className="mb-10">
-        <div
-          className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center"
-          style={{ animation: "pulse 2s ease-in-out infinite" }}
-        >
+        <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center" style={{ animation: "pulse 2s ease-in-out infinite" }}>
           <svg width="28" height="28" viewBox="0 0 14 14" fill="none">
             <rect x="1" y="1" width="5" height="5" rx="1" fill="white" />
             <rect x="8" y="1" width="5" height="5" rx="1" fill="#ff7759" />
@@ -545,7 +744,6 @@ function GeneratingScreen({
           fontFamily: "'Space Grotesk', Inter, sans-serif",
           fontSize: "28px",
           fontWeight: 600,
-          letterSpacing: "-0.5px",
         }}
       >
         {title}
@@ -554,36 +752,32 @@ function GeneratingScreen({
         {subtitle}
       </p>
 
-      {/* Progress steps */}
       <div className="w-full max-w-xs space-y-3">
-        {messages.map((msg, i) => (
-          <div key={msg} className="flex items-center gap-3">
+        {messages.map((message, index) => (
+          <div key={message} className="flex items-center gap-3">
             <div
               className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center transition-all duration-300"
               style={{
-                background: i < currentStep ? "#003c33" : i === currentStep ? "#ff7759" : "rgba(255,255,255,0.1)",
+                background:
+                  index < currentStep ? "#003c33" : index === currentStep ? "#ff7759" : "rgba(255,255,255,0.1)",
               }}
             >
-              {i < currentStep && (
+              {index < currentStep ? (
                 <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
                   <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
-              )}
-              {i === currentStep && (
-                <div
-                  className="w-2 h-2 rounded-full bg-white"
-                  style={{ animation: "pulse 1s ease-in-out infinite" }}
-                />
-              )}
+              ) : null}
+              {index === currentStep ? (
+                <div className="w-2 h-2 rounded-full bg-white" style={{ animation: "pulse 1s ease-in-out infinite" }} />
+              ) : null}
             </div>
             <span
-              className="transition-colors duration-300"
               style={{
                 fontSize: "14px",
-                color: i <= currentStep ? "white" : "rgba(255,255,255,0.3)",
+                color: index <= currentStep ? "#ffffff" : "rgba(255,255,255,0.3)",
               }}
             >
-              {msg}
+              {message}
             </span>
           </div>
         ))}

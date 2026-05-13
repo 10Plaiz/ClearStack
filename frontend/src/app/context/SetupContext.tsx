@@ -18,13 +18,21 @@ export interface SetupData {
 }
 
 export interface RepoAnalysis {
+  owner: string;
   repoName: string;
+  fullName: string;
+  repoUrl: string;
+  defaultBranch: string;
+  treeScanStatus: "complete" | "truncated";
   hasReadme: boolean;
   hasDocs: boolean;
   hasAIInstructions: boolean;
   hasDecisionLog: boolean;
   hasTestSetup: boolean;
+  hasProjectGuide: boolean;
   folderStructure: string[];
+  matchedFiles: string[];
+  missingSignals: string[];
   warnings: string[];
 }
 

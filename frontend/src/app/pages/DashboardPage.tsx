@@ -85,7 +85,15 @@ export function DashboardPage() {
       {data.repoAnalysis && (
         <div className="bg-[#071829] text-white px-6 py-3 flex items-center gap-4 flex-wrap">
           <span style={{ fontSize: "13px", fontWeight: 500 }}>
-            Repository review: <span className="text-[#ff7759]">{data.repoAnalysis.repoName}</span>
+            Repository review:{" "}
+            <a
+              href={data.repoAnalysis.repoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[#ff7759] no-underline"
+            >
+              {data.repoAnalysis.fullName}
+            </a>
           </span>
           <div className="flex items-center gap-3 flex-wrap">
             <RepoTag label="README" present={data.repoAnalysis.hasReadme} />
@@ -94,6 +102,9 @@ export function DashboardPage() {
             <RepoTag label="Decision log" present={data.repoAnalysis.hasDecisionLog} />
             <RepoTag label="Tests" present={data.repoAnalysis.hasTestSetup} />
           </div>
+          <span className="text-[#9db4d0]" style={{ fontSize: "12px" }}>
+            Branch {data.repoAnalysis.defaultBranch} · {data.repoAnalysis.matchedFiles.length} matched files
+          </span>
           {data.repoAnalysis.warnings.length > 0 && (
             <span className="text-[#ff7759]" style={{ fontSize: "12px" }}>
               ⚠ {data.repoAnalysis.warnings.length} gap{data.repoAnalysis.warnings.length > 1 ? "s" : ""} found — addressed in your setup files
