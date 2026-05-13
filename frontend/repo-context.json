@@ -1,0 +1,25 @@
+{
+  "name": "ClearStack frontend",
+  "path": "frontend",
+  "type": "github",
+  "url": "https://github.com/Raiii14/ClearStack.git",
+  "commit": "b2f456f",
+  "whitelist": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.css",
+    "src/**/*.md",
+    "package.json",
+    "README.md",
+    "index.html",
+    "vite.config.ts",
+    "postcss.config.mjs",
+    "guidelines/**/*.md"
+  ],
+  "exclude": [
+    "node_modules/**",
+    "dist/**",
+    ".vite/**",
+    "**/*.map"
+  ]
+}
