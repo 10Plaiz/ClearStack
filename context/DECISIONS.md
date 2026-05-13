@@ -36,3 +36,23 @@ Decision: Use "Project Handoff" as the user-facing name for continuity guidance.
 Why: Project Handoff communicates continuity between teammates and future AI sessions in a clear, easy-to-remember way.
 Impact: ClearStack materials should use Project Handoff for user-facing templates while preserving the underlying purpose of recording what changed, what is stable, and what comes next.
 Status: active
+
+Decision: Keep backend architecture and deployment details in the private teammate bundle until the Supabase Edge Function implementation is finalized.
+Why: The public repository should stay free of security-sensitive infrastructure details while the backend is still being designed.
+Impact: Public docs should remain high-level; private handoff notes should carry the working backend plan for Supabase, Edge Functions, and Vertex AI.
+Status: active
+
+Decision: Use Supabase Auth now for login in the MVP.
+Why: Signed-in users give the project a stable owner for setup data and make row-level access control and future session recovery much simpler than anonymous-only cache storage.
+Impact: Future implementation should assume an authenticated user owns each setup record, even if the backend storage is still being designed.
+Status: active
+
+Decision: Use email/password login with code-based email verification in the MVP, and do not add Google or other OAuth providers.
+Why: This keeps the auth flow simple for the first release while still giving the team a secure, familiar login path without adding provider complexity.
+Impact: Auth implementation should focus on standard email/password sign-up and login with verification code flow, not social login buttons.
+Status: active
+
+Decision: Make Generate the point where the current setup snapshot is saved and the dashboard opens from persisted data.
+Why: This turns generation into a clear handoff step, avoids depending on cache as the source of truth, and gives the backend a single place to finalize the session before any AI processing.
+Impact: The frontend should treat Generate as a save-and-lock action, and the backend should read the persisted setup snapshot instead of reconstructing state from client memory.
+Status: active

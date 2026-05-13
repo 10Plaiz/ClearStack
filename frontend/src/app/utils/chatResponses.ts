@@ -21,11 +21,80 @@ export function getSuggestions(): string[] {
   return SUGGESTIONS;
 }
 
+interface ChatApiResponse {
+  reply?: string;
+  message?: string;
+  content?: string;
+  text?: string;
+}
+
+interface ChatTransportRequest {
+  message: string;
+  history: Array<Pick<ChatMessage, "role" | "content">>;
+  setup: SetupData;
+}
+
+const chatApiUrl = import.meta.env.VITE_CHAT_API_URL?.trim().replace(/\/+$/, "");
+
+function buildChatRequest(message: string, context: SetupData, history: ChatMessage[]): ChatTransportRequest {
+  return {
+    message: message.trim(),
+    history: history.map(({ role, content }) => ({ role, content })),
+    setup: context,
+  };
+}
+
+function extractChatReply(payload: ChatApiResponse): string | null {
+  const candidates = [payload.reply, payload.message, payload.content, payload.text];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
+async function requestRemoteChatResponse(
+  message: string,
+  context: SetupData,
+  history: ChatMessage[]
+): Promise<string | null> {
+  if (!chatApiUrl) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(chatApiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildChatRequest(message, context, history)),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as ChatApiResponse;
+    return extractChatReply(payload);
+  } catch {
+    return null;
+  }
+}
+
 export async function getChatResponse(
   message: string,
   context: SetupData,
-  _history: ChatMessage[]
+  history: ChatMessage[]
 ): Promise<string> {
+  const remoteResponse = await requestRemoteChatResponse(message, context, history);
+  if (remoteResponse) {
+    return remoteResponse;
+  }
+
   // Simulate network delay
   await new Promise((r) => setTimeout(r, 900 + Math.random() * 600));
 

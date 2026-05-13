@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, Link } from "react-router";
-import { useSetup } from "../context/SetupContext";
+import { useSetup, type SetupData } from "../context/SetupContext";
 import { generateSetupFiles, type GeneratedFile } from "../utils/generateSetup";
 import { getChatResponse, getSuggestions, type ChatMessage } from "../utils/chatResponses";
 
@@ -10,12 +10,18 @@ export function DashboardPage() {
 
   // Redirect if setup not done
   useEffect(() => {
-    if (!data.isGenerated && !data.projectTypes.length) {
+    if (!data.isGenerated) {
       navigate("/setup");
     }
-  }, []);
+  }, [data.isGenerated, navigate]);
 
-  const files = generateSetupFiles(data);
+  const setupSnapshot = useMemo(() => collectSetupSnapshot(data), [data]);
+
+  if (!data.isGenerated) {
+    return null;
+  }
+
+  const files = generateSetupFiles(setupSnapshot);
 
   return (
     <div
@@ -119,10 +125,31 @@ export function DashboardPage() {
         <SetupPackagePanel files={files} />
 
         {/* ── RIGHT: Chat ── */}
-        <ChatPanel />
+        <ChatPanel setupData={setupSnapshot} />
       </div>
     </div>
   );
+}
+
+function collectSetupSnapshot(data: SetupData): SetupData {
+  return {
+    ...data,
+    projectTypes: [...data.projectTypes],
+    stack: [...data.stack],
+    aiTools: [...data.aiTools],
+    aiHelp: [...data.aiHelp],
+    aiAvoid: [...data.aiAvoid],
+    learningSupport: [...data.learningSupport],
+    repoAnalysis: data.repoAnalysis
+      ? {
+          ...data.repoAnalysis,
+          folderStructure: [...data.repoAnalysis.folderStructure],
+          matchedFiles: [...data.repoAnalysis.matchedFiles],
+          missingSignals: [...data.repoAnalysis.missingSignals],
+          warnings: [...data.repoAnalysis.warnings],
+        }
+      : null,
+  };
 }
 
 // ── Repo tag ──────────────────────────────────────────────────────────────
@@ -332,12 +359,11 @@ function SetupPackagePanel({ files }: { files: GeneratedFile[] }) {
 }
 
 // ── Chat panel ────────────────────────────────────────────────────────────
-function ChatPanel() {
-  const { data } = useSetup();
+function ChatPanel({ setupData }: { setupData: SetupData }) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content: `Your setup package is ready. I'm familiar with your project — a **${data.projectTypes[0] || "project"}** in **${data.stage || "development"}** stage, built with **${data.stack.join(", ") || "your chosen stack"}**.\n\nAsk me anything about your setup files, AI workflow, scope decisions, or learning strategy. I won't write code for you — but I can help you understand what to build, when, and how to use AI tools responsibly.`,
+      content: buildAssistantGreeting(setupData),
       timestamp: new Date(),
     },
   ]);
@@ -364,7 +390,7 @@ function ChatPanel() {
     setIsTyping(true);
 
     try {
-      const response = await getChatResponse(text.trim(), data, messages);
+      const response = await getChatResponse(text.trim(), setupData, messages);
       const assistantMessage: ChatMessage = {
         role: "assistant",
         content: response,
@@ -535,6 +561,31 @@ function ChatPanel() {
       </div>
     </div>
   );
+}
+
+function buildAssistantGreeting(data: SetupData): string {
+  const startType =
+    data.startType === "new"
+      ? "Starting a new project"
+      : data.startType === "existing"
+        ? "Reviewing an existing project"
+        : "Not selected";
+
+  const repoSummary = data.repoAnalysis
+    ? [
+        `Repository review: ${data.repoAnalysis.fullName}`,
+        `Repository URL: ${data.repoAnalysis.repoUrl}`,
+        `Default branch: ${data.repoAnalysis.defaultBranch}`,
+        `Tree scan status: ${data.repoAnalysis.treeScanStatus}`,
+        `Matched setup files: ${data.repoAnalysis.matchedFiles.length}`,
+        `Signals: README ${data.repoAnalysis.hasReadme ? "yes" : "no"}, docs ${data.repoAnalysis.hasDocs ? "yes" : "no"}, AI instructions ${data.repoAnalysis.hasAIInstructions ? "yes" : "no"}, decision log ${data.repoAnalysis.hasDecisionLog ? "yes" : "no"}, tests ${data.repoAnalysis.hasTestSetup ? "yes" : "no"}, project guide ${data.repoAnalysis.hasProjectGuide ? "yes" : "no"}`,
+        `Warnings: ${data.repoAnalysis.warnings.length > 0 ? data.repoAnalysis.warnings.length : "none"}`,
+      ].join("\n- ")
+    : data.repoUrl
+      ? `Repository URL: ${data.repoUrl}\n- Review status: not completed`
+      : "Repository: not provided";
+
+  return `Your setup package is ready. I collected the full setup context from /setup before opening this chat.\n\n- Starting point: ${startType}\n- Project types: ${data.projectTypes.length > 0 ? data.projectTypes.join(", ") : "Not selected"}\n- Stage: ${data.stage || "Not selected"}\n- Experience: ${data.experience || "Not selected"}\n- Stack: ${data.stack.length > 0 ? data.stack.join(", ") : "Not selected"}\n- AI tools: ${data.aiTools.length > 0 ? data.aiTools.join(", ") : "Not selected"}\n- AI help: ${data.aiHelp.length > 0 ? data.aiHelp.join(", ") : "Not selected"}\n- AI avoid: ${data.aiAvoid.length > 0 ? data.aiAvoid.join(", ") : "Not selected"}\n- Learning support: ${data.learningSupport.length > 0 ? data.learningSupport.join(", ") : "Not selected"}\n- Decision tracking: ${data.decisionTracking || "Not selected"}\n- Progress handoff: ${data.progressHandoff || "Not selected"}\n- ${repoSummary}\n\nAsk me about scope, setup files, repository review, or AI prompting. I won't write code for you, but I can help you use the collected context responsibly.`;
 }
 
 // ── Simple markdown renderer ───────────────────────────────────────────────

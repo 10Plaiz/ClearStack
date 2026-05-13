@@ -12,4 +12,3 @@ context/*
 !context/DECISIONS.md
 backend-data-flow.md
 .env.local
-.env.example
