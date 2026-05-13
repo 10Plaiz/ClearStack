@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_GITHUB_API_VERSION?: string;
   readonly VITE_GITHUB_TOKEN?: string;
   readonly VITE_CHAT_API_URL?: string;
+  readonly VITE_SUPABASE_URL?: string;
+  readonly VITE_SUPABASE_ANON_KEY?: string;
 }
 
 interface ImportMeta {

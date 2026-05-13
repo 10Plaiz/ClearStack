@@ -16,10 +16,13 @@
   - `VITE_GITHUB_API_BASE_URL`
   - `VITE_GITHUB_API_VERSION`
   - `VITE_GITHUB_TOKEN` (optional, but useful for higher rate limits during local development)
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
 
   Notes:
 
   - This app only reviews public repositories.
+  - Supabase Auth currently uses email/password signup with email verification.
   - The review validates the repository, reads metadata, scans the default branch tree, and matches setup-related files.
   - `VITE_` variables are exposed to the browser build. For production, move GitHub API access behind a backend proxy instead of shipping a token in the client.
   
