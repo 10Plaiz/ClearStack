@@ -47,6 +47,11 @@ Why: Signed-in users give the project a stable owner for setup data and make row
 Impact: Future implementation should assume an authenticated user owns each setup record, even if the backend storage is still being designed.
 Status: active
 
+Decision: Use email/password login with code-based email verification in the MVP, and do not add Google or other OAuth providers.
+Why: This keeps the auth flow simple for the first release while still giving the team a secure, familiar login path without adding provider complexity.
+Impact: Auth implementation should focus on standard email/password sign-up and login with verification code flow, not social login buttons.
+Status: active
+
 Decision: Make Generate the point where the current setup snapshot is saved and the dashboard opens from persisted data.
 Why: This turns generation into a clear handoff step, avoids depending on cache as the source of truth, and gives the backend a single place to finalize the session before any AI processing.
 Impact: The frontend should treat Generate as a save-and-lock action, and the backend should read the persisted setup snapshot instead of reconstructing state from client memory.
