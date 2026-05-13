@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { BrandLogo } from "../components/BrandLogo";
 import { useSetup } from "../context/SetupContext";
 import { analyzeRepo } from "../utils/generateSetup";
 import { parseGitHubRepoUrl } from "../utils/githubApi";
@@ -402,20 +403,10 @@ export function SetupPage() {
       <header className="border-b border-[#e5e7eb] px-6 h-16 flex items-center justify-between">
         <Link
           to="/"
-          className="flex items-center gap-2 no-underline"
+          className="no-underline"
           style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}
         >
-          <div className="w-7 h-7 rounded-[6px] bg-[#17171c] flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="1" y="1" width="5" height="5" rx="1" fill="white" />
-              <rect x="8" y="1" width="5" height="5" rx="1" fill="#ff7759" />
-              <rect x="1" y="8" width="5" height="5" rx="1" fill="white" opacity="0.5" />
-              <rect x="8" y="8" width="5" height="5" rx="1" fill="white" />
-            </svg>
-          </div>
-          <span className="text-[#17171c]" style={{ fontSize: "16px", fontWeight: 600 }}>
-            ClearStack
-          </span>
+          <BrandLogo className="block h-8 w-auto" />
         </Link>
         <span className="text-[#93939f]" style={{ fontSize: "13px" }}>
           Step {stepIndex + 1} of {visibleSteps.length}

@@ -25,7 +25,7 @@ export function DashboardPage() {
 
   return (
     <div
-      className="min-h-screen bg-[#f8f8f7] flex flex-col"
+      className="h-screen bg-[#f8f8f7] flex flex-col overflow-hidden"
       style={{ fontFamily: "Inter, Arial, sans-serif" }}
     >
       {/* ── Header ── */}
@@ -120,7 +120,7 @@ export function DashboardPage() {
       )}
 
       {/* ── Main content ── */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
         {/* ── LEFT: Setup package ── */}
         <SetupPackagePanel files={files} />
 
@@ -197,7 +197,7 @@ function SetupPackagePanel({ files }: { files: GeneratedFile[] }) {
   };
 
   return (
-    <div className="flex-1 lg:max-w-[55%] flex flex-col bg-white border-r border-[#e5e7eb] overflow-hidden">
+    <div className="flex-1 lg:basis-0 min-h-0 flex flex-col bg-white border-r border-[#e5e7eb] overflow-hidden">
       {/* Panel header */}
       <div className="px-5 pt-5 pb-0 border-b border-[#e5e7eb]">
         <div className="flex items-center justify-between mb-4">
@@ -286,7 +286,7 @@ function SetupPackagePanel({ files }: { files: GeneratedFile[] }) {
       </div>
 
       {/* File content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {activeTab === "explanation" ? (
           <div className="p-6">
             <div
@@ -413,7 +413,7 @@ function ChatPanel({ setupData }: { setupData: SetupData }) {
   const suggestions = getSuggestions();
 
   return (
-    <div className="flex-1 flex flex-col bg-[#fafafa] min-h-0">
+    <div className="flex-1 lg:basis-0 flex flex-col bg-[#fafafa] min-h-0 overflow-hidden">
       {/* Chat header */}
       <div className="px-5 py-4 border-b border-[#e5e7eb] bg-white">
         <div className="flex items-center gap-2.5">
