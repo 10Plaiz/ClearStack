@@ -94,6 +94,10 @@ export async function getChatResponse(
 
   // ── GitHub / repo ─────────────────────────────────────────────────────
   if (q.includes("github") || q.includes("repository") || q.includes("repo") || q.includes("git")) {
+    if (context.repoAnalysis) {
+      return `Your current repository review is based on **${context.repoAnalysis.fullName}** on branch **${context.repoAnalysis.defaultBranch}**.\n\nWhat ClearStack found:\n- README present: ${context.repoAnalysis.hasReadme ? "Yes" : "No"}\n- Docs folder present: ${context.repoAnalysis.hasDocs ? "Yes" : "No"}\n- AI instruction files present: ${context.repoAnalysis.hasAIInstructions ? "Yes" : "No"}\n- Decision log present: ${context.repoAnalysis.hasDecisionLog ? "Yes" : "No"}\n- Test setup detected: ${context.repoAnalysis.hasTestSetup ? "Yes" : "No"}\n\nThe shallow review matched **${context.repoAnalysis.matchedFiles.length}** setup-related files. The biggest gaps right now are: ${context.repoAnalysis.missingSignals.join(", ") || "none"}.\n\nUse the generated \`REPOSITORY_REVIEW.md\` file as the stable handoff summary for future sessions.`;
+    }
+
     return `For a **${stage}** stage ${projectType}, here's the minimum GitHub setup you need:\n\n${stage === "Ideation" || stage === "Proposal Writing" ? "- A private repo with your README and context files\n- No code yet — the repo is for documentation\n- Commit your setup package files (PROJECT_CONTEXT.md, AI_WORKFLOW.md)" : "- Main branch is protected (no direct pushes)\n- At least one descriptive commit per session\n- README kept up to date with setup steps\n- .gitignore configured for your stack (${stack})\n- Secrets never committed (no API keys in code)"}\n\n${context.aiAvoid.includes("Pushing to protected branches without permission") ? "Your setup already includes a rule against pushing to protected branches without permission — make sure your AI tool respects this." : ""}`;
   }
 
