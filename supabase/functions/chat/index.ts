@@ -75,7 +75,7 @@ async function askVertexAi(input: {
       contents: buildVertexContents(input),
       generationConfig: {
         temperature: 0.4,
-        maxOutputTokens: 700,
+        maxOutputTokens: 1400,
       },
     }),
   });
@@ -107,6 +107,7 @@ function buildSystemInstruction(): string {
     "Use the provided setup context and any repository file excerpts when they are relevant.",
     "If a user asks where something is or what a file says, answer from the repository context instead of guessing.",
     "Keep answers practical and beginner-friendly, usually 3 to 6 bullets or short paragraphs.",
+    "Always finish the final sentence. Do not end with an incomplete bullet or trailing phrase.",
   ].join(" ");
 }
 
